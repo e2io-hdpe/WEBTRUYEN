@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống | Toàn Trí Độc Giả</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script async defer src="https://accounts.google.com/gsi/client"></script>
+    <script async defer src="https://apis.google.com/js/api.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121212; --text-color: #e0e0e0; --primary-color: #f39c12; 
+            --nav-bg: #1e1e1e; --border-color: #333; --danger-color: #e74c3c; --drive-color: #4285F4;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-color); line-height: 1.6; }
+        
+        header { 
+            background-color: var(--nav-bg); padding: 15px 20px; display: flex; 
+            justify-content: space-between; align-items: center; 
+            border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100;
+        }
+        .novel-title { font-size: 1.2rem; font-weight: bold; color: var(--primary-color); }
+
+        .close-btn {
+            background-color: transparent; color: var(--danger-color); border: 1px solid var(--danger-color);
+            padding: 5px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; display: none;
+        }
+        .close-btn:hover { background-color: var(--danger-color); color: #fff; }
+
+        #upload-section {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 70vh; text-align: center; padding: 20px;
+        }
+        
+        .upload-buttons {
+            display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap; justify-content: center;
+        }
+
+        .btn {
+            padding: 15px 30px; font-size: 1rem; font-weight: bold; border-radius: 5px;
+            cursor: pointer; transition: 0.3s; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        
+        .btn-local { background-color: var(--primary-color); color: #000; }
+        .btn-local:hover { background-color: #d68910; transform: translateY(-2px); }
+        
+        .btn-drive { background-color: var(--drive-color); color: #fff; display: flex; align-items: center; gap: 10px;}
+        .btn-drive:hover { background-color: #3367D6; transform: translateY(-2px); }
+        
+        input[type="file"] { display: none; }
+
+        #reader-section { display: none; max-width: 800px; margin: 0 auto; padding: 30px 20px; min-height: 80vh; }
+        #page-info { text-align: center; color: var(--primary-color); margin-bottom: 20px; font-weight: bold; }
+        #chapter-content { font-size: 1.1rem; text-align: justify; white-space: pre-wrap; }
+
+        footer { max-width: 800px; margin: 0 auto; padding: 20px; display: flex; justify-content: space-between; gap: 10px; }
+        .nav-btn {
+            background-color: var(--nav-bg); color: var(--text-color); border: 1px solid var(--border-color);
+            padding: 12px 20px; border-radius: 5px; cursor: pointer; flex: 1; font-size: 1rem; transition: 0.2s;
+        }
+        .nav-btn:hover:not(:disabled) { background-color: var(--primary-color); color: #fff; }
+        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="novel-title">[Kênh #7813] Toàn Trí Độc Giả</div>
+        <button id="close-btn" class="close-btn" onclick="closePdf()">✕ Đóng kịch bản</button>
+    </header>
+
+    <main id="upload-section">
+        <h2 style="margin-bottom: 10px;">Đồng bộ Kịch Bản</h2>
+        <p style="margin-bottom: 20px; color: #aaa;">Tải lên từ thiết bị hoặc chọn trực tiếp từ Google Drive của bạn.</p>
+        
+        <div class="upload-buttons">
+            <label for="pdf-upload" class="btn btn-local">Tải lên từ Máy / Điện thoại</label>
+            <input type="file" id="pdf-upload" accept=".pdf" />
+            
+            <button id="drive-btn" class="btn btn-drive" onclick="loadPicker()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M7.71 3.5L1.15 15l3.43 6 6.55-11.5M9.73 15L6.3 21h13.12l3.43-6m-3.41-11.5L12.87 15H6.01l6.58-11.5"/></svg>
+                Chọn từ Google Drive
+            </button>
+        </div>
+    </main>
+
+    <div id="reader-section">
+        <div id="page-info">Trang 1 / ?</div>
+        <div id="chapter-content">Nội dung đang được đồng bộ...</div>
+        <footer>
+            <button class="nav-btn" id="prev-btn" onclick="changePage(-1)" disabled>❮ Trang Trước</button>
+            <button class="nav-btn" id="next-btn" onclick="changePage(1)" disabled>Trang Sau ❯</button>
+        </footer>
+    </div>
+
+    <script>
+        // --- ĐIỀN THÔNG TIN TỪ GOOGLE CLOUD VÀO ĐÂY ---
+        const API_KEY = 'AIzaSyD369bMFjJt1L821fiwgtEzfXdSdwumlJQ'; 
+        const CLIENT_ID = '659502498734-8siqo8l9pfk7kh8cr613gpmvmc4oi2f2.apps.googleusercontent.com'; 
+        const APP_ID = '659502498734'; // Chính là số Project Number
+        // ----------------------------------------------
+
+        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+        let tokenClient;
+        let accessToken = null;
+        let pickerInited = false;
+
+        // 1. Khởi tạo Google APIs khi trang vừa load
+        window.onload = function() {
+            gapi.load('client:picker', initializePicker);
+            // Khởi tạo hệ thống đăng nhập lấy Token của Google
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        accessToken = tokenResponse.access_token;
+                        createPicker(); // Có token rồi thì mở bảng chọn file
+                    }
+                },
+            });
+        };
+
+        function initializePicker() {
+            gapi.client.load('drive', 'v3');
+            pickerInited = true;
+        }
+
+        // Bấm nút Drive -> Yêu cầu đăng nhập lấy Token
+        function loadPicker() {
+            if (pickerInited) {
+                tokenClient.requestAccessToken();
+            } else {
+                alert("Hệ thống Google đang tải, vui lòng thử lại sau vài giây.");
+            }
+        }
+
+        // Tạo giao diện Picker
+        function createPicker() {
+            const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
+            view.setMimeTypes('application/pdf'); // Chỉ cho phép chọn file PDF
+
+            const picker = new google.picker.PickerBuilder()
+                .enableFeature(google.picker.Feature.NAV_HIDDEN)
+                .setDeveloperKey(API_KEY)
+                .setAppId(APP_ID)
+                .setOAuthToken(accessToken)
+                .addView(view)
+                .setCallback(pickerCallback)
+                .build();
+            picker.setVisible(true);
+        }
+
+        // Xử lý khi người dùng chọn xong file trên Drive
+        async function pickerCallback(data) {
+            if (data.action === google.picker.Action.PICKED) {
+                const fileId = data.docs[0].id;
+                document.getElementById('chapter-content').innerText = "Đang tải dữ liệu Kịch Bản từ Tinh Lưu...";
+                switchInterfaceToReader();
+                
+                try {
+                    // Dùng Fetch API tải dữ liệu thô của file PDF từ Google Drive
+                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+
+                    if (!response.ok) throw new Error("Không thể tải file");
+                    
+                    const arrayBuffer = await response.arrayBuffer();
+                    const typedarray = new Uint8Array(arrayBuffer);
+                    
+                    // Ném dữ liệu vào PDF.js
+                    loadPdfData(typedarray);
+
+                } catch (error) {
+                    alert("Lỗi đồng bộ: " + error.message);
+                    closePdf();
+                }
+            }
+        }
+
+        // ==========================================
+        // PHẦN PDF.JS VÀ GIAO DIỆN XỬ LÝ NHƯ CŨ
+        // ==========================================
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        let pdfDoc = null;
+        let currentPage = 1;
+
+        const uploadInput = document.getElementById('pdf-upload');
+        const uploadSection = document.getElementById('upload-section');
+        const readerSection = document.getElementById('reader-section');
+        const contentDiv = document.getElementById('chapter-content');
+        const pageInfo = document.getElementById('page-info');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const closeBtn = document.getElementById('close-btn');
+
+        // Xử lý nút tải file Local (Máy/Điện thoại)
+        uploadInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file && file.type === "application/pdf") {
+                const fileReader = new FileReader();
+                fileReader.onload = function() {
+                    loadPdfData(new Uint8Array(this.result));
+                };
+                fileReader.readAsArrayBuffer(file);
+                switchInterfaceToReader();
+            } else {
+                alert("Chỉ chấp nhận file PDF!");
+            }
+        });
+
+        function switchInterfaceToReader() {
+            uploadSection.style.display = 'none';
+            readerSection.style.display = 'block';
+            closeBtn.style.display = 'block';
+        }
+
+        function loadPdfData(typedarray) {
+            pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                pdfDoc = pdf;
+                currentPage = 1;
+                renderPage(currentPage);
+            }).catch(error => {
+                alert("Lỗi khi đọc định dạng PDF.");
+                closePdf();
+            });
+        }
+
+        function renderPage(num) {
+            pdfDoc.getPage(num).then(page => {
+                page.getTextContent().then(textContent => {
+                    let finalString = "";
+                    let lastY = -1;
+                    textContent.items.forEach(item => {
+                        if (lastY !== item.transform[5] && lastY !== -1) finalString += "\n";
+                        finalString += item.str;
+                        lastY = item.transform[5];
+                    });
+                    contentDiv.innerText = finalString;
+                    pageInfo.innerText = `Trang ${currentPage} / ${pdfDoc.numPages}`;
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    prevBtn.disabled = currentPage <= 1;
+                    nextBtn.disabled = currentPage >= pdfDoc.numPages;
+                });
+            });
+        }
+
+        function changePage(step) {
+            const newPage = currentPage + step;
+            if (newPage >= 1 && newPage <= pdfDoc.numPages) {
+                currentPage = newPage;
+                renderPage(currentPage);
+            }
+        }
+
+        function closePdf() {
+            pdfDoc = null;
+            currentPage = 1;
+            uploadInput.value = ""; 
+            contentDiv.innerText = "Nội dung đang được đồng bộ...";
+            readerSection.style.display = 'none';
+            closeBtn.style.display = 'none';
+            uploadSection.style.display = 'flex';
+        }
+    </script>
+</body>
+</html>
